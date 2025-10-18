@@ -1,4 +1,4 @@
--- Proteção anti-múltipla execução (sempre PRIMEIRA LINHA)
+-- Anti-múltipla execução (DEVE SER A PRIMEIRA LINHA DO ARQUIVO)
 local alreadyLoaded
 if getgenv then
     alreadyLoaded = getgenv()._YORIICHIMENU_LOADED
@@ -9,27 +9,41 @@ else
 end
 if alreadyLoaded then return end
 
--- Serviços principais
-local TweenService = game:GetService("TweenService")
+-- Serviços
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
 
--- UI sempre no PlayerGui (Delta Mobile)
+local LocalPlayer = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
+
+-- Shared persistent state (keeps settings across reloads if same environment)
+if getgenv then
+    getgenv()._YORIICHIMENU_HITBOX_STATUS = getgenv()._YORIICHIMENU_HITBOX_STATUS or { ["1_2_5"] = false, ["Boss3"] = false }
+else
+    _G._YORIICHIMENU_HITBOX_STATUS = _G._YORIICHIMENU_HITBOX_STATUS or { ["1_2_5"] = false, ["Boss3"] = false }
+end
+local sharedHitboxStatus = (getgenv and getgenv()._YORIICHIMENU_HITBOX_STATUS) or _G._YORIICHIMENU_HITBOX_STATUS
+
+-- ScreenGui
 local sg = Instance.new("ScreenGui")
 sg.Name = "YoriichiMenuUI"
 sg.IgnoreGuiInset = true
 sg.ResetOnSpawn = false
-sg.Parent = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer.PlayerGui
+sg.Parent = playerGui
+
+-- Small helper to keep event-based updates
+local HitboxEvent = Instance.new("BindableEvent")
+HitboxEvent.Name = "_Yoriichi_HitboxEvent"
+HitboxEvent.Parent = sg
 
 local function Notify(msg)
-    print("[Yoriichi Menu]: "..msg)
+    print("[Yoriichi Menu]: " .. msg)
 end
 
--- Utilitários UI
-local function newUICorner(parent, radius)
+-- UI utilities
+local function newUICornerGui(parent, radius)
     radius = radius or UDim.new(0,16)
     local c = Instance.new("UICorner")
     c.CornerRadius = radius
@@ -42,16 +56,6 @@ local function newUIStroke(parent, color, thickness)
     s.Thickness = thickness or 2
     s.Parent = parent
     return s
-end
-local function animateRGB(label)
-    spawn(function()
-        local t = 0
-        while label and label.Parent do
-            label.TextColor3 = Color3.fromHSV((t % 1), 0.8, 1)
-            t = t + 0.01
-            RunService.Heartbeat:Wait()
-        end
-    end)
 end
 local function styleButton(btn, colorBase, colorHover, colorDown, textBase, textHover)
     btn.BackgroundColor3 = colorBase
@@ -105,8 +109,8 @@ local function makeDraggable(frame)
     end)
 end
 
--- Main UI
-local mainWidth, mainHeight = 480, 270
+-- Main UI layout (kept similar)
+local mainWidth, mainHeight = 480, 300
 local main = Instance.new("Frame")
 main.Name = "MainWindow"
 main.Size = UDim2.fromOffset(mainWidth, mainHeight)
@@ -120,16 +124,8 @@ local mainBg = Instance.new("Frame", main)
 mainBg.Size = UDim2.fromScale(1, 1)
 mainBg.BackgroundColor3 = Color3.fromRGB(67, 9, 17)
 mainBg.BorderSizePixel = 0
-newUICorner(mainBg, UDim.new(0, 22))
+newUICornerGui(mainBg, UDim.new(0, 18))
 newUIStroke(mainBg, Color3.fromRGB(30,10,12), 2)
-
-local grad = Instance.new("UIGradient", mainBg)
-grad.Rotation = 90
-grad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(180, 34, 59)),
-    ColorSequenceKeypoint.new(0.7, Color3.fromRGB(97, 11, 33)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(67, 9, 17))
-})
 
 local title = Instance.new("TextLabel", mainBg)
 title.Text = "Yoriichi Menu"
@@ -139,7 +135,14 @@ title.BackgroundTransparency = 1
 title.Font = Enum.Font.GothamBold
 title.TextSize = 32
 title.TextXAlignment = Enum.TextXAlignment.Center
-animateRGB(title)
+spawn(function()
+    local t = 0
+    while title and title.Parent do
+        title.TextColor3 = Color3.fromHSV((t % 1), 0.8, 1)
+        t = t + 0.01
+        RunService.Heartbeat:Wait()
+    end
+end)
 
 local tabBar = Instance.new("Frame", mainBg)
 tabBar.Name = "TabBar"
@@ -154,10 +157,10 @@ local selectedTab = 1
 local function createPage(name)
     local frame = Instance.new("Frame", mainBg)
     frame.Name = name.."Page"
-    frame.Size = UDim2.new(1, -20, 1, -91)
+    frame.Size = UDim2.new(1, -20, 1, -110)
     frame.Position = UDim2.new(0, 10, 0, 73)
     frame.BackgroundColor3 = Color3.fromRGB(97, 11, 33)
-    newUICorner(frame, UDim.new(0, 17))
+    newUICornerGui(frame, UDim.new(0, 16))
     frame.Visible = false
     frame.Active = true
     return frame
@@ -193,7 +196,7 @@ for i, name in ipairs(tabNames) do
     btn.BorderSizePixel = 0
     btn.ZIndex = 11
     btn.Active = true
-    newUICorner(btn, UDim.new(1,0))
+    newUICornerGui(btn, UDim.new(1,0))
     styleButton(btn, Color3.fromRGB(97,11,33), Color3.fromRGB(180,34,59), Color3.fromRGB(150,17,40), Color3.fromRGB(220,220,220), Color3.fromRGB(255,255,255))
     btn.MouseButton1Click:Connect(function() selectTab(i) end)
     tabButtons[i] = btn
@@ -202,121 +205,55 @@ end
 makeDraggable(main)
 makeDraggable(mainBg)
 
--- Botão FECHAR (X)
+-- Close / Minimize
 local closeBtn = Instance.new("TextButton", mainBg)
 closeBtn.Text = "X"
 closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 26
+closeBtn.TextSize = 24
 closeBtn.Size = UDim2.new(0,38,0,30)
-closeBtn.Position = UDim2.new(1, -46, 0, 10)
+closeBtn.Position = UDim2.new(1, -46, 0, 8)
 closeBtn.BorderSizePixel = 0
 closeBtn.ZIndex = 100
 closeBtn.Active = true
-newUICorner(closeBtn, UDim.new(1, 0))
+newUICornerGui(closeBtn, UDim.new(1, 0))
 newUIStroke(closeBtn, Color3.fromRGB(97,11,33), 1)
 styleButton(closeBtn, Color3.fromRGB(180,34,59), Color3.fromRGB(255,80,80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
+
+local minBtn = Instance.new("TextButton", mainBg)
+minBtn.Text = "-"
+minBtn.Font = Enum.Font.GothamBold
+minBtn.TextSize = 24
+minBtn.Size = UDim2.new(0,38,0,30)
+minBtn.Position = UDim2.new(1, -90, 0, 8)
+minBtn.BorderSizePixel = 0
+minBtn.ZIndex = 100
+minBtn.Active = true
+newUICornerGui(minBtn, UDim.new(1, 0))
+newUIStroke(minBtn, Color3.fromRGB(67, 9, 17), 1)
+styleButton(minBtn, Color3.fromRGB(180,34,59), Color3.fromRGB(255,80,80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
+
+-- close cleanup
+local cleanupConnections = {}
+local function cleanupAll()
+    if getgenv then getgenv()._YORIICHIMENU_LOADED = nil else _G._YORIICHIMENU_LOADED = nil end
+    -- disconnect custom conns
+    for _, c in ipairs(cleanupConnections) do
+        pcall(function() c:Disconnect() end)
+    end
+    cleanupConnections = {}
+    -- destroy hitbox manager if exists
+    if _G._YoriichiHitboxManager and type(_G._YoriichiHitboxManager.Destroy) == "function" then
+        pcall(function() _G._YoriichiHitboxManager.Destroy() end)
+        _G._YoriichiHitboxManager = nil
+    end
+end
 
 closeBtn.MouseButton1Click:Connect(function()
     pcall(function()
         if sg and sg.Parent then sg:Destroy() end
-        if getgenv then getgenv()._YORIICHIMENU_LOADED = nil else _G._YORIICHIMENU_LOADED = nil end
-        -- Remove partes hitbox se fechar
-        for _, part in pairs(workspace:GetDescendants()) do
-            if part:IsA("Part") and part.Name == "_YoriichiHitboxVisual" then
-                part:Destroy()
-            end
-        end
+        cleanupAll()
     end)
 end)
-
--- Botão MINIMIZAR (-)
-local minBtn = Instance.new("TextButton", mainBg)
-minBtn.Text = "-"
-minBtn.Font = Enum.Font.GothamBold
-minBtn.TextSize = 26
-minBtn.Size = UDim2.new(0,38,0,30)
-minBtn.Position = UDim2.new(1, -90, 0, 10)
-minBtn.BorderSizePixel = 0
-minBtn.ZIndex = 100
-minBtn.Active = true
-newUICorner(minBtn, UDim.new(1, 0))
-newUIStroke(minBtn, Color3.fromRGB(67, 9, 17), 1)
-styleButton(minBtn, Color3.fromRGB(180,34,59), Color3.fromRGB(255,80,80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
-
--- Mini ícone
-local imageUrl = "rbxassetid://72447234301333"
-local miniPos = UDim2.new(0, 40, 0.7, 0)
-local miniFrame = nil
-local function createMiniWindow()
-    if sg:FindFirstChild("MiniWindow") then return sg:FindFirstChild("MiniWindow") end
-    miniFrame = Instance.new("Frame", sg)
-    miniFrame.Name = "MiniWindow"
-    miniFrame.Size = UDim2.new(0,48,0,48)
-    miniFrame.Position = miniPos
-    miniFrame.BackgroundColor3 = Color3.fromRGB(180, 34, 59)
-    miniFrame.BorderSizePixel = 0
-    newUICorner(miniFrame, UDim.new(0, 14))
-    newUIStroke(miniFrame, Color3.fromRGB(67, 9, 17), 2)
-    miniFrame.ZIndex = 999
-
-    local miniImage = Instance.new("ImageButton", miniFrame)
-    miniImage.Size = UDim2.new(1,0,1,0)
-    miniImage.Position = UDim2.new(0,0,0,0)
-    miniImage.BackgroundTransparency = 1
-    miniImage.Image = imageUrl
-    miniImage.ZIndex = 1000
-    miniImage.AutoButtonColor = true
-    newUICorner(miniImage, UDim.new(1,0))
-
-    -- Drag mobile/PC
-    local dragging, dragStart, startPos, moved
-    local function beginDrag(input)
-        dragging = true
-        dragStart = input.Position
-        startPos = miniFrame.Position
-        moved = false
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-    local function updateDrag(input)
-        if dragging then
-            local delta = input.Position - dragStart
-            miniFrame.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
-            )
-            miniPos = miniFrame.Position
-            moved = true
-        end
-    end
-    local function connectDraggable(guiObject)
-        guiObject.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                beginDrag(input)
-            end
-        end)
-        guiObject.InputChanged:Connect(updateDrag)
-    end
-    connectDraggable(miniFrame)
-    connectDraggable(miniImage)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            updateDrag(input)
-        end
-    end)
-    local function tryOpen()
-        if moved then return end
-        if sg:FindFirstChild("MiniWindow") then sg:FindFirstChild("MiniWindow"):Destroy() end
-        main.Visible = true
-        main.Position = UDim2.new(0.5, -mainWidth/2, 0.45, -mainHeight/2)
-    end
-    miniImage.MouseButton1Up:Connect(tryOpen)
-    miniImage.TouchTap:Connect(tryOpen)
-    return miniFrame
-end
 
 minBtn.MouseButton1Click:Connect(function()
     if sg:FindFirstChild("MiniWindow") then
@@ -326,21 +263,33 @@ minBtn.MouseButton1Click:Connect(function()
         return
     end
     main.Visible = false
-    local mini = createMiniWindow()
-    mini.Position = miniPos
+    local mini = Instance.new("Frame", sg)
+    mini.Name = "MiniWindow"
+    mini.Size = UDim2.new(0,48,0,48)
+    mini.Position = UDim2.new(0, 40, 0.7, 0)
+    mini.BackgroundColor3 = Color3.fromRGB(180, 34, 59)
+    mini.BorderSizePixel = 0
+    newUICornerGui(mini, UDim.new(0, 14))
+    newUIStroke(mini, Color3.fromRGB(67, 9, 17), 2)
+    local miniImage = Instance.new("ImageButton", mini)
+    miniImage.Size = UDim2.new(1,0,1,0)
+    miniImage.BackgroundTransparency = 1
+    miniImage.Image = "rbxassetid://72447234301333"
+    miniImage.AutoButtonColor = true
+    newUICornerGui(miniImage, UDim.new(1,0))
+    miniImage.MouseButton1Up:Connect(function() if mini and mini.Parent then mini:Destroy() end main.Visible = true end)
 end)
 
--- Universal funções (Correr/Pular)
+-- Universal features (Speed / Jump) - kept simple and efficient
 local runBtn = Instance.new("TextButton", universalPage)
 runBtn.Name = "RunFastBtn"
 runBtn.Text = "Correr Rápido"
 runBtn.Font = Enum.Font.GothamBold
 runBtn.TextSize = 18
 runBtn.Size = UDim2.new(0.8, 0, 0, 36)
-runBtn.Position = UDim2.new(0.1, 0, 0, 20)
+runBtn.Position = UDim2.new(0.1, 0, 0, 16)
 styleButton(runBtn, Color3.fromRGB(180,34,59), Color3.fromRGB(255, 80, 80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
-runBtn.BorderSizePixel = 0
-newUICorner(runBtn, UDim.new(0, 7))
+newUICornerGui(runBtn, UDim.new(0, 7))
 newUIStroke(runBtn, Color3.fromRGB(67, 9, 17), 2)
 
 local jumpBtn = Instance.new("TextButton", universalPage)
@@ -349,119 +298,225 @@ jumpBtn.Text = "Pular Alto"
 jumpBtn.Font = Enum.Font.GothamBold
 jumpBtn.TextSize = 18
 jumpBtn.Size = UDim2.new(0.8, 0, 0, 36)
-jumpBtn.Position = UDim2.new(0.1, 0, 0, 68)
+jumpBtn.Position = UDim2.new(0.1, 0, 0, 64)
 styleButton(jumpBtn, Color3.fromRGB(180,34,59), Color3.fromRGB(255, 80, 80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
-jumpBtn.BorderSizePixel = 0
-newUICorner(jumpBtn, UDim.new(0, 7))
+newUICornerGui(jumpBtn, UDim.new(0, 7))
 newUIStroke(jumpBtn, Color3.fromRGB(67, 9, 17), 2)
 
 local fastActive = false
 local jumpActive = false
-local origWalkSpeed = 16
-local origJumpPower = 50
+local origValues = {}
 
-local function setSpeed(enable)
-    local char = LocalPlayer.Character
-    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        if enable then
-            origWalkSpeed = humanoid.WalkSpeed or origWalkSpeed
-            humanoid.WalkSpeed = 65
-        else
-            humanoid.WalkSpeed = origWalkSpeed or 16
-        end
-    end
+local function applyMovementToHumanoid(humanoid)
+    if not humanoid then return end
+    local char = humanoid.Parent
+    if not char then return end
+    local id = tostring(char) -- simple key
+    origValues[id] = origValues[id] or {WalkSpeed = humanoid.WalkSpeed, JumpPower = humanoid.JumpPower}
+    humanoid.WalkSpeed = fastActive and 65 or (origValues[id].WalkSpeed or 16)
+    humanoid.JumpPower = jumpActive and 170 or (origValues[id].JumpPower or 50)
 end
-local function setJump(enable)
-    local char = LocalPlayer.Character
-    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        if enable then
-            origJumpPower = humanoid.JumpPower or origJumpPower
-            humanoid.JumpPower = 170
-        else
-            humanoid.JumpPower = origJumpPower or 50
-        end
-    end
-end
+
 runBtn.MouseButton1Click:Connect(function()
     fastActive = not fastActive
-    setSpeed(fastActive)
     runBtn.Text = fastActive and "Correr Rápido (ON)" or "Correr Rápido"
     Notify(fastActive and "Velocidade aumentada!" or "Velocidade normal!")
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then applyMovementToHumanoid(hum) end
 end)
+
 jumpBtn.MouseButton1Click:Connect(function()
     jumpActive = not jumpActive
-    setJump(jumpActive)
     jumpBtn.Text = jumpActive and "Pular Alto (ON)" or "Pular Alto"
     Notify(jumpActive and "Pulo MUITO aumentado!" or "Pulo normalizado!")
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then applyMovementToHumanoid(hum) end
 end)
+
 LocalPlayer.CharacterAdded:Connect(function(char)
-    char:WaitForChild("Humanoid")
-    setSpeed(fastActive)
-    setJump(jumpActive)
+    local hum = char:WaitForChild("Humanoid")
+    applyMovementToHumanoid(hum)
 end)
+if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+    applyMovementToHumanoid(LocalPlayer.Character:FindFirstChildOfClass("Humanoid"))
+end
 
--- Lootblox: Dropdown múltiplo e hitbox visual sincronizada
-local hitboxStatus = { ["1_2_5"] = false, ["Boss3"] = false }
--- Aranha: 36x maior, Boss: 1000x1000x1000
-local hitboxSizes = { ["1_2_5"] = Vector3.new(36, 36, 36), ["Boss3"] = Vector3.new(1000, 1000, 1000) }
-local defaultSize = Vector3.new(2, 2, 1)
+--------------------------------------------------------------------------------
+-- HitboxManager (event-driven, no polling)
+--------------------------------------------------------------------------------
+local HitboxManager = {}
+do
+    local hitboxStatus = sharedHitboxStatus -- shared table
+    local hitboxSizes = { ["1_2_5"] = Vector3.new(36,36,36), ["Boss3"] = Vector3.new(1000,1000,1000) }
+    local defaultSize = Vector3.new(2,2,1)
 
-local function updateHitboxParts()
-    -- Remove partes antigas
-    for _, part in pairs(workspace:GetDescendants()) do
-        if part:IsA("Part") and part.Name == "_YoriichiHitboxVisual" then
-            part:Destroy()
-        end
+    local hrpData = setmetatable({}, { __mode = "k" }) -- weak keys
+
+    local descendantAddedConn, descendantRemovingConn
+
+    local function ensureOrigSizeTag(hrp)
+        local tag = hrp:FindFirstChild("_YoriichiOrigSize")
+        if tag and tag:IsA("Vector3Value") then return tag end
+        local v = Instance.new("Vector3Value")
+        v.Name = "_YoriichiOrigSize"
+        v.Value = hrp.Size
+        v.Parent = hrp
+        return v
     end
-    for npc, enabled in pairs(hitboxStatus) do
-        for _, obj in pairs(workspace:GetDescendants()) do
-            if obj.Name == npc and obj:FindFirstChild("HumanoidRootPart") then
-                local hrp = obj.HumanoidRootPart
+
+    local function createVisual(hrp, key)
+        if not hrp or not hrp.Parent then return end
+        if hrpData[hrp] then return end
+        local tag = ensureOrigSizeTag(hrp)
+        local targetSize = hitboxSizes[key] or hrp.Size
+
+        -- apply size change to HRP (this changes the NPC hitbox)
+        hrp.Size = targetSize
+
+        -- create visible part childed to HRP (non-collidable)
+        local part = Instance.new("Part")
+        part.Name = "_YoriichiHitboxVisual"
+        part.Size = hrp.Size
+        part.Transparency = 0.5
+        part.Color = Color3.fromRGB(0,255,0)
+        part.Anchored = false
+        part.CanCollide = false
+        part.Massless = true
+        part.Parent = hrp
+        part.CFrame = hrp.CFrame
+
+        local weld = Instance.new("WeldConstraint")
+        weld.Part0 = hrp
+        weld.Part1 = part
+        weld.Parent = hrp
+
+        local sizeConn = hrp:GetPropertyChangedSignal("Size"):Connect(function()
+            if part and part.Parent then
+                part.Size = hrp.Size
+            end
+        end)
+
+        hrpData[hrp] = { key = key, origTag = tag, visual = part, sizeConn = sizeConn }
+    end
+
+    local function removeVisual(hrp)
+        local data = hrpData[hrp]
+        if not data then return end
+        if data.origTag and data.origTag:IsA("Vector3Value") then
+            hrp.Size = data.origTag.Value or defaultSize
+            pcall(function() data.origTag:Destroy() end)
+        else
+            hrp.Size = defaultSize
+        end
+        if data.sizeConn then pcall(function() data.sizeConn:Disconnect() end) end
+        if data.visual and data.visual.Parent then pcall(function() data.visual:Destroy() end) end
+        hrpData[hrp] = nil
+    end
+
+    local function applyToggleForKey(key, enabled)
+        hitboxStatus[key] = enabled
+        -- single scan at toggle time (acceptable), the rest handled by events for new descendants
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj and obj.Name == key and obj:FindFirstChild("HumanoidRootPart") then
+                local hrp = obj:FindFirstChild("HumanoidRootPart")
                 if enabled then
-                    hrp.Size = hitboxSizes[npc]
-                    local part = Instance.new("Part")
-                    part.Anchored = false
-                    part.CanCollide = false
-                    part.Massless = true
-                    part.Transparency = 0.5
-                    part.Color = Color3.new(0,1,0)
-                    part.Size = hrp.Size
-                    part.Name = "_YoriichiHitboxVisual"
-                    part.CFrame = hrp.CFrame
-                    part.Parent = hrp
-                    local weld = Instance.new("WeldConstraint")
-                    weld.Part0 = hrp
-                    weld.Part1 = part
-                    weld.Parent = hrp
+                    createVisual(hrp, key)
                 else
-                    hrp.Size = defaultSize
+                    removeVisual(hrp)
                 end
             end
         end
+        -- fire event so UI updates
+        pcall(function() HitboxEvent:Fire(key, enabled) end)
+    end
+
+    descendantAddedConn = Workspace.DescendantAdded:Connect(function(desc)
+        if not desc then return end
+        if desc.Name == "HumanoidRootPart" and desc.Parent and hitboxStatus[desc.Parent.Name] then
+            createVisual(desc, desc.Parent.Name)
+            return
+        end
+        if desc:IsA("Model") and hitboxStatus[desc.Name] and desc:FindFirstChild("HumanoidRootPart") then
+            createVisual(desc:FindFirstChild("HumanoidRootPart"), desc.Name)
+            return
+        end
+    end)
+
+    descendantRemovingConn = Workspace.DescendantRemoving:Connect(function(desc)
+        if not desc then return end
+        if desc.Name == "HumanoidRootPart" then
+            removeVisual(desc)
+        end
+    end)
+
+    HitboxManager.Toggle = function(key, enabled)
+        applyToggleForKey(key, enabled)
+    end
+
+    HitboxManager.GetStatus = function()
+        local s = {}
+        for k, v in pairs(hitboxStatus) do s[k] = v end
+        return s
+    end
+
+    HitboxManager.Destroy = function()
+        if descendantAddedConn then pcall(function() descendantAddedConn:Disconnect() end) end
+        if descendantRemovingConn then pcall(function() descendantRemovingConn:Disconnect() end) end
+        for hrp, _ in pairs(hrpData) do
+            pcall(function() removeVisual(hrp) end)
+        end
+        hrpData = {}
+    end
+
+    _G._YoriichiHitboxManager = HitboxManager
+end
+
+--------------------------------------------------------------------------------
+-- Improved multi-select dropdown (Lootblox)
+-- - ScrollingFrame for many options
+-- - Checkbox indicator + label
+-- - Click-outside-to-close, debounce, and event-driven sync
+--------------------------------------------------------------------------------
+
+-- track open dropdowns and global input connection for outside clicks
+local openDropdown = nil
+local outsideConn
+
+local function closeOpenDropdown()
+    if openDropdown and openDropdown.rootFrame and openDropdown.toggleBtn then
+        openDropdown.frame.Visible = false
+        openDropdown.toggleBtn.Text = openDropdown.title .. " ▼"
+        openDropdown = nil
     end
 end
-spawn(function()
-    while true do
-        for npc, enabled in pairs(hitboxStatus) do
-            for _, obj in pairs(workspace:GetDescendants()) do
-                if obj.Name == npc and obj:FindFirstChild("HumanoidRootPart") then
-                    for _, part in pairs(obj.HumanoidRootPart:GetChildren()) do
-                        if part:IsA("Part") and part.Name == "_YoriichiHitboxVisual" then
-                            part.Size = obj.HumanoidRootPart.Size
-                            part.CFrame = obj.HumanoidRootPart.CFrame
-                        end
-                    end
-                end
-            end
+
+-- close dropdown on click outside
+outsideConn = UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if not openDropdown then return end
+    if gameProcessedEvent then return end
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+    local target = input.Target
+    -- if Target is a GuiObject descendant, check if it's inside current dropdown root
+    local inside = false
+    if target and typeof(target) == "Instance" then
+        local node = target
+        while node and node.Parent do
+            if node == openDropdown.rootFrame or node == openDropdown.toggleBtn then inside = true break end
+            node = node.Parent
         end
-        updateHitboxParts()
-        wait(0.4)
+    end
+    if not inside then
+        closeOpenDropdown()
     end
 end)
+table.insert(cleanupConnections, outsideConn)
 
 local function createMultiDropdown(parent, title, options, yPos)
+    local container = {} -- to return refs if needed
+    container.title = title
+
     local btn = Instance.new("TextButton", parent)
     btn.Text = title .. " ▼"
     btn.Font = Enum.Font.GothamBold
@@ -472,64 +527,16 @@ local function createMultiDropdown(parent, title, options, yPos)
     btn.TextColor3 = Color3.fromRGB(255,255,255)
     btn.BorderSizePixel = 0
     btn.AutoButtonColor = true
-    newUICorner(btn, UDim.new(0, 7))
+    newUICornerGui(btn, UDim.new(0, 7))
     newUIStroke(btn, Color3.fromRGB(67, 9, 17), 2)
     styleButton(btn, Color3.fromRGB(180,34,59), Color3.fromRGB(255,80,80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
 
+    -- frame with scroll
     local frame = Instance.new("Frame", parent)
     frame.Visible = false
     frame.BackgroundColor3 = Color3.fromRGB(97, 11, 33)
-    frame.Size = UDim2.new(0.8, 0, 0, #options * 42)
-    frame.Position = UDim2.new(0.1, 0, 0, yPos + 38)
+    frame.Size = UDim2.new(0.8, 0, 0, math.min(#options * 44, 200))
+    frame.Position = UDim2.new(0.1, 0, 0, yPos + 40)
     frame.BorderSizePixel = 0
-    newUICorner(frame, UDim.new(0, 7))
+    newUICornerGui(frame, UDim.new(0, 7))
     newUIStroke(frame, Color3.fromRGB(67, 9, 17), 2)
-    frame.ClipsDescendants = true
-
-    for i, opt in ipairs(options) do
-        local optBtn = Instance.new("TextButton", frame)
-        optBtn.Text = opt.label
-        optBtn.Font = Enum.Font.Gotham
-        optBtn.TextSize = 17
-        optBtn.Size = UDim2.new(1, 0, 0, 40)
-        optBtn.Position = UDim2.new(0, 0, 0, (i-1)*42)
-        optBtn.BackgroundColor3 = Color3.fromRGB(180,34,59)
-        optBtn.TextColor3 = Color3.fromRGB(255,255,255)
-        optBtn.BorderSizePixel = 0
-        newUICorner(optBtn, UDim.new(1,0))
-        styleButton(optBtn, Color3.fromRGB(180,34,59), Color3.fromRGB(255,80,80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
-
-        -- Bolinha verde
-        local indicator = Instance.new("Frame", optBtn)
-        indicator.Name = "Indicator"
-        indicator.Size = UDim2.new(0, 16, 0, 16)
-        indicator.Position = UDim2.new(0, 10, 0.5, -8)
-        indicator.BackgroundColor3 = hitboxStatus[opt.key] and Color3.new(0,1,0) or Color3.fromRGB(60,60,60)
-        indicator.BorderSizePixel = 0
-        newUICorner(indicator, UDim.new(1,0))
-        local function updateIndicator()
-            indicator.BackgroundColor3 = hitboxStatus[opt.key] and Color3.new(0,1,0) or Color3.fromRGB(60,60,60)
-        end
-        optBtn.MouseButton1Click:Connect(function()
-            hitboxStatus[opt.key] = not hitboxStatus[opt.key]
-            updateIndicator()
-            Notify((hitboxStatus[opt.key] and "Hitbox ativada para " or "Hitbox desativada de ")..opt.label.."!")
-        end)
-    end
-    btn.MouseButton1Click:Connect(function()
-        frame.Visible = not frame.Visible
-        btn.Text = title .. (frame.Visible and " ▲" or " ▼")
-    end)
-end
-
-createMultiDropdown(lootbloxPage, "Expandir Hitbox", {
-    {key="1_2_5", label="Aranha"},
-    {key="Boss3", label="Boss Aranha"}
-}, 20)
-
-main.Visible = false
-wait(0.10)
-main.Visible = true
-main.Position = UDim2.new(0.5, -mainWidth/2, 0.45, -mainHeight/2)
-selectTab(1)
-Notify("Script carregado corretamente — pronto para uso!")
