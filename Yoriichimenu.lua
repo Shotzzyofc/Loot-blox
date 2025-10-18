@@ -548,4 +548,95 @@ local function createMultiDropdown(parent, title, options, yPos)
         btnItem.Position = UDim2.new(0, 4, 0, 0)
         btnItem.BackgroundColor3 = Color3.fromRGB(180,34,59)
         btnItem.Text = ""
-        btnItem.
+        btnItem.Font = Enum.Font.Gotham
+        btnItem.TextSize = 17
+        btnItem.BorderSizePixel = 0
+        newUICornerGui(btnItem, UDim.new(1,0))
+        styleButton(btnItem, Color3.fromRGB(180,34,59), Color3.fromRGB(255,80,80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
+
+        local indicator = Instance.new("Frame", btnItem)
+        indicator.Name = "Indicator"
+        indicator.Size = UDim2.new(0, 16, 0, 16)
+        indicator.Position = UDim2.new(0, 10, 0.5, -8)
+        indicator.BorderSizePixel = 0
+        newUICornerGui(indicator, UDim.new(1,0))
+        indicator.BackgroundColor3 = Color3.fromRGB(60,60,60)
+
+        local lbl = Instance.new("TextLabel", btnItem)
+        lbl.Size = UDim2.new(1, -44, 1, 0)
+        lbl.Position = UDim2.new(0, 36, 0, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = opt.label or opt.key
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 16
+        lbl.TextColor3 = Color3.fromRGB(255,255,255)
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+        btnItem.MouseButton1Click:Connect(function()
+            if clickDebounce[opt.key] then return end
+            clickDebounce[opt.key] = true
+            delay(0.08, function() clickDebounce[opt.key] = nil end)
+            local current = (HitboxManager and HitboxManager.GetStatus and HitboxManager.GetStatus()[opt.key]) or sharedHitboxStatus[opt.key]
+            if HitboxManager and HitboxManager.Toggle then
+                HitboxManager.Toggle(opt.key, not current)
+            else
+                sharedHitboxStatus[opt.key] = not current
+                pcall(function() HitboxEvent:Fire(opt.key, not current) end)
+            end
+        end)
+
+        itemRefs[opt.key] = { indicator = indicator, label = lbl }
+        refreshIndicator(opt.key, indicator)
+    end
+
+    local hitEventConn = HitboxEvent.Event:Connect(function(key, enabled)
+        if itemRefs[key] and itemRefs[key].indicator then
+            itemRefs[key].indicator.BackgroundColor3 = enabled and Color3.new(0,1,0) or Color3.fromRGB(60,60,60)
+        end
+    end)
+    table.insert(cleanupConnections, hitEventConn)
+
+    btn.MouseButton1Click:Connect(function()
+        if openDropdown and openDropdown ~= container then
+            closeOpenDropdown()
+        end
+        frame.Visible = not frame.Visible
+        btn.Text = title .. (frame.Visible and " ▲" or " ▼")
+        if frame.Visible then
+            openDropdown = { rootFrame = frame, toggleBtn = btn, title = title }
+            local o = createOverlay()
+            if o then
+                o.Visible = true
+                o.ZIndex = 90
+                if o:IsDescendantOf(sg) then
+                    local conn = o.MouseButton1Click:Connect(function()
+                        closeOpenDropdown()
+                        if conn then pcall(function() conn:Disconnect() end) end
+                    end)
+                    table.insert(cleanupConnections, conn)
+                end
+            end
+        else
+            if overlay then overlay.Visible = false end
+            openDropdown = nil
+        end
+    end)
+
+    container.toggleBtn = btn
+    container.frame = frame
+    container.rootFrame = parent
+
+    return container
+end
+
+createMultiDropdown(lootbloxPage, "Expandir Hitbox", {
+    {key="1_2_5", label="Aranha"},
+    {key="Boss3", label="Boss Aranha"}
+}, 18)
+
+main.Visible = false
+wait(0.10)
+main.Visible = true
+main.Position = UDim2.new(0.5, -mainWidth/2, 0.45, -mainHeight/2)
+selectTab(1)
+Notify("Script adaptado para Delta/mobile carregado — pronto para uso.")
