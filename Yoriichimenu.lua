@@ -9,16 +9,20 @@ else
 end
 if alreadyLoaded then return end
 
--- Serviços
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
-local LocalPlayer = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then
+    while not LocalPlayer do
+        RunService.Heartbeat:Wait()
+        LocalPlayer = Players.LocalPlayer
+    end
+end
 local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
 
--- Shared persistent state (keeps settings across reloads if same environment)
 if getgenv then
     getgenv()._YORIICHIMENU_HITBOX_STATUS = getgenv()._YORIICHIMENU_HITBOX_STATUS or { ["1_2_5"] = false, ["Boss3"] = false }
 else
@@ -26,23 +30,20 @@ else
 end
 local sharedHitboxStatus = (getgenv and getgenv()._YORIICHIMENU_HITBOX_STATUS) or _G._YORIICHIMENU_HITBOX_STATUS
 
--- ScreenGui
 local sg = Instance.new("ScreenGui")
 sg.Name = "YoriichiMenuUI"
 sg.IgnoreGuiInset = true
 sg.ResetOnSpawn = false
 sg.Parent = playerGui
 
--- Small helper to keep event-based updates
 local HitboxEvent = Instance.new("BindableEvent")
 HitboxEvent.Name = "_Yoriichi_HitboxEvent"
 HitboxEvent.Parent = sg
 
 local function Notify(msg)
-    print("[Yoriichi Menu]: " .. msg)
+    pcall(function() print("[Yoriichi Menu]: " .. msg) end)
 end
 
--- UI utilities
 local function newUICornerGui(parent, radius)
     radius = radius or UDim.new(0,16)
     local c = Instance.new("UICorner")
@@ -73,7 +74,7 @@ local function styleButton(btn, colorBase, colorHover, colorDown, textBase, text
         btn.BackgroundColor3 = colorDown
     end)
     btn.MouseButton1Up:Connect(function()
-        if btn:IsMouseOver() then
+        if btn.IsMouseOver and btn:IsMouseOver() then
             btn.BackgroundColor3 = colorHover
         else
             btn.BackgroundColor3 = colorBase
@@ -109,7 +110,6 @@ local function makeDraggable(frame)
     end)
 end
 
--- Main UI layout (kept similar)
 local mainWidth, mainHeight = 480, 300
 local main = Instance.new("Frame")
 main.Name = "MainWindow"
@@ -205,7 +205,19 @@ end
 makeDraggable(main)
 makeDraggable(mainBg)
 
--- Close / Minimize
+local cleanupConnections = {}
+local function cleanupAll()
+    if getgenv then getgenv()._YORIICHIMENU_LOADED = nil else _G._YORIICHIMENU_LOADED = nil end
+    for _, c in ipairs(cleanupConnections) do
+        pcall(function() c:Disconnect() end)
+    end
+    cleanupConnections = {}
+    if _G._YoriichiHitboxManager and type(_G._YoriichiHitboxManager.Destroy) == "function" then
+        pcall(function() _G._YoriichiHitboxManager.Destroy() end)
+        _G._YoriichiHitboxManager = nil
+    end
+end
+
 local closeBtn = Instance.new("TextButton", mainBg)
 closeBtn.Text = "X"
 closeBtn.Font = Enum.Font.GothamBold
@@ -231,22 +243,6 @@ minBtn.Active = true
 newUICornerGui(minBtn, UDim.new(1, 0))
 newUIStroke(minBtn, Color3.fromRGB(67, 9, 17), 1)
 styleButton(minBtn, Color3.fromRGB(180,34,59), Color3.fromRGB(255,80,80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
-
--- close cleanup
-local cleanupConnections = {}
-local function cleanupAll()
-    if getgenv then getgenv()._YORIICHIMENU_LOADED = nil else _G._YORIICHIMENU_LOADED = nil end
-    -- disconnect custom conns
-    for _, c in ipairs(cleanupConnections) do
-        pcall(function() c:Disconnect() end)
-    end
-    cleanupConnections = {}
-    -- destroy hitbox manager if exists
-    if _G._YoriichiHitboxManager and type(_G._YoriichiHitboxManager.Destroy) == "function" then
-        pcall(function() _G._YoriichiHitboxManager.Destroy() end)
-        _G._YoriichiHitboxManager = nil
-    end
-end
 
 closeBtn.MouseButton1Click:Connect(function()
     pcall(function()
@@ -280,7 +276,6 @@ minBtn.MouseButton1Click:Connect(function()
     miniImage.MouseButton1Up:Connect(function() if mini and mini.Parent then mini:Destroy() end main.Visible = true end)
 end)
 
--- Universal features (Speed / Jump) - kept simple and efficient
 local runBtn = Instance.new("TextButton", universalPage)
 runBtn.Name = "RunFastBtn"
 runBtn.Text = "Correr Rápido"
@@ -288,7 +283,7 @@ runBtn.Font = Enum.Font.GothamBold
 runBtn.TextSize = 18
 runBtn.Size = UDim2.new(0.8, 0, 0, 36)
 runBtn.Position = UDim2.new(0.1, 0, 0, 16)
-styleButton(runBtn, Color3.fromRGB(180,34,59), Color3.fromRGB(255, 80, 80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
+styleButton(runBtn, Color3.fromRGB(180,34,59), Color3.fromRGB(255,80,80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
 newUICornerGui(runBtn, UDim.new(0, 7))
 newUIStroke(runBtn, Color3.fromRGB(67, 9, 17), 2)
 
@@ -299,7 +294,7 @@ jumpBtn.Font = Enum.Font.GothamBold
 jumpBtn.TextSize = 18
 jumpBtn.Size = UDim2.new(0.8, 0, 0, 36)
 jumpBtn.Position = UDim2.new(0.1, 0, 0, 64)
-styleButton(jumpBtn, Color3.fromRGB(180,34,59), Color3.fromRGB(255, 80, 80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
+styleButton(jumpBtn, Color3.fromRGB(180,34,59), Color3.fromRGB(255,80,80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
 newUICornerGui(jumpBtn, UDim.new(0, 7))
 newUIStroke(jumpBtn, Color3.fromRGB(67, 9, 17), 2)
 
@@ -311,7 +306,7 @@ local function applyMovementToHumanoid(humanoid)
     if not humanoid then return end
     local char = humanoid.Parent
     if not char then return end
-    local id = tostring(char) -- simple key
+    local id = tostring(char)
     origValues[id] = origValues[id] or {WalkSpeed = humanoid.WalkSpeed, JumpPower = humanoid.JumpPower}
     humanoid.WalkSpeed = fastActive and 65 or (origValues[id].WalkSpeed or 16)
     humanoid.JumpPower = jumpActive and 170 or (origValues[id].JumpPower or 50)
@@ -340,20 +335,15 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     applyMovementToHumanoid(hum)
 end)
 if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-    applyMovementToHumanoid(LocalPlayer.Character:FindFirstChildOfClass("Humanoid"))
+    applyMovementToHumanoid(LocalPlayer.Character:FindFirstChildClass("Humanoid"))
 end
 
---------------------------------------------------------------------------------
--- HitboxManager (event-driven, no polling)
---------------------------------------------------------------------------------
 local HitboxManager = {}
 do
-    local hitboxStatus = sharedHitboxStatus -- shared table
+    local hitboxStatus = sharedHitboxStatus
     local hitboxSizes = { ["1_2_5"] = Vector3.new(36,36,36), ["Boss3"] = Vector3.new(1000,1000,1000) }
     local defaultSize = Vector3.new(2,2,1)
-
-    local hrpData = setmetatable({}, { __mode = "k" }) -- weak keys
-
+    local hrpData = setmetatable({}, { __mode = "k" })
     local descendantAddedConn, descendantRemovingConn
 
     local function ensureOrigSizeTag(hrp)
@@ -371,11 +361,7 @@ do
         if hrpData[hrp] then return end
         local tag = ensureOrigSizeTag(hrp)
         local targetSize = hitboxSizes[key] or hrp.Size
-
-        -- apply size change to HRP (this changes the NPC hitbox)
         hrp.Size = targetSize
-
-        -- create visible part childed to HRP (non-collidable)
         local part = Instance.new("Part")
         part.Name = "_YoriichiHitboxVisual"
         part.Size = hrp.Size
@@ -386,18 +372,15 @@ do
         part.Massless = true
         part.Parent = hrp
         part.CFrame = hrp.CFrame
-
         local weld = Instance.new("WeldConstraint")
         weld.Part0 = hrp
         weld.Part1 = part
         weld.Parent = hrp
-
         local sizeConn = hrp:GetPropertyChangedSignal("Size"):Connect(function()
             if part and part.Parent then
                 part.Size = hrp.Size
             end
         end)
-
         hrpData[hrp] = { key = key, origTag = tag, visual = part, sizeConn = sizeConn }
     end
 
@@ -417,7 +400,6 @@ do
 
     local function applyToggleForKey(key, enabled)
         hitboxStatus[key] = enabled
-        -- single scan at toggle time (acceptable), the rest handled by events for new descendants
         for _, obj in ipairs(Workspace:GetDescendants()) do
             if obj and obj.Name == key and obj:FindFirstChild("HumanoidRootPart") then
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
@@ -428,7 +410,6 @@ do
                 end
             end
         end
-        -- fire event so UI updates
         pcall(function() HitboxEvent:Fire(key, enabled) end)
     end
 
@@ -473,48 +454,39 @@ do
     _G._YoriichiHitboxManager = HitboxManager
 end
 
---------------------------------------------------------------------------------
--- Improved multi-select dropdown (Lootblox)
--- - ScrollingFrame for many options
--- - Checkbox indicator + label
--- - Click-outside-to-close, debounce, and event-driven sync
---------------------------------------------------------------------------------
+local overlay
+local function createOverlay()
+    if overlay and overlay.Parent then return overlay end
+    overlay = Instance.new("TextButton", sg)
+    overlay.Name = "Yoriichi_DropdownOverlay"
+    overlay.BackgroundTransparency = 1
+    overlay.BorderSizePixel = 0
+    overlay.Size = UDim2.new(1, 0, 1, 0)
+    overlay.Position = UDim2.new(0, 0, 0, 0)
+    overlay.ZIndex = 80
+    overlay.AutoButtonColor = false
+    overlay.Text = ""
+    overlay.Visible = false
+    return overlay
+end
+createOverlay()
 
--- track open dropdowns and global input connection for outside clicks
 local openDropdown = nil
-local outsideConn
-
 local function closeOpenDropdown()
-    if openDropdown and openDropdown.rootFrame and openDropdown.toggleBtn then
-        openDropdown.frame.Visible = false
-        openDropdown.toggleBtn.Text = openDropdown.title .. " ▼"
+    if openDropdown then
+        if openDropdown.frame and openDropdown.frame.Parent then
+            openDropdown.frame.Visible = false
+        end
+        if openDropdown.toggleBtn and openDropdown.toggleBtn.Parent then
+            openDropdown.toggleBtn.Text = openDropdown.title .. " ▼"
+        end
+        if overlay and overlay.Parent then overlay.Visible = false end
         openDropdown = nil
     end
 end
 
--- close dropdown on click outside
-outsideConn = UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-    if not openDropdown then return end
-    if gameProcessedEvent then return end
-    if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-    local target = input.Target
-    -- if Target is a GuiObject descendant, check if it's inside current dropdown root
-    local inside = false
-    if target and typeof(target) == "Instance" then
-        local node = target
-        while node and node.Parent do
-            if node == openDropdown.rootFrame or node == openDropdown.toggleBtn then inside = true break end
-            node = node.Parent
-        end
-    end
-    if not inside then
-        closeOpenDropdown()
-    end
-end)
-table.insert(cleanupConnections, outsideConn)
-
 local function createMultiDropdown(parent, title, options, yPos)
-    local container = {} -- to return refs if needed
+    local container = {}
     container.title = title
 
     local btn = Instance.new("TextButton", parent)
@@ -531,7 +503,6 @@ local function createMultiDropdown(parent, title, options, yPos)
     newUIStroke(btn, Color3.fromRGB(67, 9, 17), 2)
     styleButton(btn, Color3.fromRGB(180,34,59), Color3.fromRGB(255,80,80), Color3.fromRGB(120,0,0), Color3.fromRGB(255,255,255), Color3.fromRGB(255,255,255))
 
-    -- frame with scroll
     local frame = Instance.new("Frame", parent)
     frame.Visible = false
     frame.BackgroundColor3 = Color3.fromRGB(97, 11, 33)
@@ -540,3 +511,41 @@ local function createMultiDropdown(parent, title, options, yPos)
     frame.BorderSizePixel = 0
     newUICornerGui(frame, UDim.new(0, 7))
     newUIStroke(frame, Color3.fromRGB(67, 9, 17), 2)
+    frame.ClipsDescendants = true
+    frame.ZIndex = 100
+
+    local scroll = Instance.new("ScrollingFrame", frame)
+    scroll.Size = UDim2.new(1, 0, 1, 0)
+    scroll.Position = UDim2.new(0, 0, 0, 0)
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.CanvasSize = UDim2.new(0, 0, 0, #options * 44)
+    scroll.ScrollBarThickness = 6
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+    local listLayout = Instance.new("UIListLayout", scroll)
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Padding = UDim.new(0, 4)
+
+    local itemRefs = {}
+    local clickDebounce = {}
+
+    local function refreshIndicator(key, indicator)
+        local status = (HitboxManager and HitboxManager.GetStatus and HitboxManager.GetStatus()[key]) or sharedHitboxStatus[key]
+        if indicator and indicator.Parent then
+            indicator.BackgroundColor3 = status and Color3.new(0,1,0) or Color3.fromRGB(60,60,60)
+        end
+    end
+
+    for i, opt in ipairs(options) do
+        local item = Instance.new("Frame", scroll)
+        item.LayoutOrder = i
+        item.Size = UDim2.new(1, -8, 0, 40)
+        item.BackgroundTransparency = 1
+
+        local btnItem = Instance.new("TextButton", item)
+        btnItem.Size = UDim2.new(1, -8, 1, 0)
+        btnItem.Position = UDim2.new(0, 4, 0, 0)
+        btnItem.BackgroundColor3 = Color3.fromRGB(180,34,59)
+        btnItem.Text = ""
+        btnItem.
